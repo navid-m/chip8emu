@@ -14,6 +14,10 @@ val SDL_KEYUP: u32   = 769
 
 val SDLK_ESCAPE: i32 = 27
 val SDLK_F1: i32     = 1073741882
+val SDLK_RETURN: i32 = 13
+val SDLK_SPACE: i32  = 32
+val SDLK_RIGHT: i32  = 1073741903
+val SDLK_LEFT: i32   = 1073741904
 val SDLK_1: i32 = 49
 val SDLK_2: i32 = 50
 val SDLK_3: i32 = 51
@@ -604,6 +608,39 @@ fn speed_delay_ms(speed_level: i32) u32 = {
   return (BASE_LOOP_DELAY_MS - speed_level) as u32
 }
 
+fn set_host_key(chip: ref Chip8, sym: i32, pressed: u8) void = {
+  if sym == SDLK_LEFT {
+    set_key(chip, 4, pressed)
+    return
+  }
+  if sym == SDLK_RIGHT {
+    set_key(chip, 6, pressed)
+    return
+  }
+  if sym == SDLK_SPACE {
+    set_key(chip, 5, pressed)
+    return
+  }
+  if sym == SDLK_RETURN {
+    set_key(chip, 1, pressed)
+    return
+  }
+
+  val ki: mut usize = 0
+  for {
+    if ki >= NUM_KEYS { break }
+    match @get(keypad_map, ki) {
+      some mapped => {
+        if mapped == sym {
+          set_key(chip, ki, pressed)
+        }
+      }
+      none => { }
+    }
+    ki = ki + 1
+  }
+}
+
 fn event_type(ev: ref void) u32 = {
   return trust @load(ev) as u32
 }
@@ -698,36 +735,12 @@ pub fn main() void = {
                 speed_level = speed_level - 1
               }
             } else {
-              val ki: mut usize = 0
-              for {
-                if ki >= NUM_KEYS { break }
-                match @get(keypad_map, ki) {
-                  some mapped => {
-                    if mapped == sym {
-                      set_key(chip, ki, 1)
-                    }
-                  }
-                  none => { }
-                }
-                ki = ki + 1
-              }
+              set_host_key(chip, sym, 1)
             }
           }
           if ev_type == SDL_KEYUP {
             val sym: i32 = event_keysym(event)
-            val ki: mut usize = 0
-            for {
-              if ki >= NUM_KEYS { break }
-              match @get(keypad_map, ki) {
-                some mapped => {
-                  if mapped == sym {
-                    set_key(chip, ki, 0)
-                  }
-                }
-                none => { }
-              }
-              ki = ki + 1
-            }
+            set_host_key(chip, sym, 0)
           }
         }
 
