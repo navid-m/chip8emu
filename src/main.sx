@@ -601,7 +601,7 @@ pub fn main() void = {
   val args = @args()
 
   if @len(args) < 2 {
-    stdio.puts("usage: cemu <rom file>")
+    stdio.puts("usage: chip8emu <rom file>")
     return
   }
 
@@ -625,7 +625,7 @@ pub fn main() void = {
       }
 
       val window: ref void = trust SDL_CreateWindow(
-        "cemu",
+        "chip8emu",
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
         WIN_W, WIN_H,
         SDL_WINDOW_SHOWN
