@@ -319,7 +319,7 @@ fn chip8_emulateCycle(chip: mut ref Chip8) void = {
         none => { chip.pc = chip.pc + 2 }
       }
     } else {
-      @printf("Unknown opcode: {x}\n", chip.opcode)
+      trust @printf("Unknown opcode: {x}\n", chip.opcode)
     }
   } elif opcode_high == 0x1000 {
     chip.pc = chip.opcode & 0x0FFF
@@ -434,7 +434,7 @@ fn chip8_emulateCycle(chip: mut ref Chip8) void = {
       set_vx(chip, x, vx << 1)
       chip.pc = chip.pc + 2
     } else {
-      @printf("Unknown opcode: {x}\n", chip.opcode)
+      trust @printf("Unknown opcode: {x}\n", chip.opcode)
     }
   } elif opcode_high == 0x9000 {
     // 0x9XY0 - Skip if VX != VY
@@ -531,7 +531,7 @@ fn chip8_emulateCycle(chip: mut ref Chip8) void = {
         none => { chip.pc = chip.pc + 4 }
       }
     } else {
-      @printf("Unknown opcode: {x}\n", chip.opcode)
+      trust @printf("Unknown opcode: {x}\n", chip.opcode)
     }
   } elif opcode_high == 0xF000 {
     val x: u16 = (chip.opcode & 0x0F00) >> 8
@@ -613,10 +613,10 @@ fn chip8_emulateCycle(chip: mut ref Chip8) void = {
       chip.I = chip.I + x_val + 1
       chip.pc = chip.pc + 2
     } else {
-      @printf("Unknown opcode: {x}\n", chip.opcode)
+      trust @printf("Unknown opcode: {x}\n", chip.opcode)
     }
   } else {
-    @printf("Unimplemented opcode: {x}\n", chip.opcode)
+    trust @printf("Unimplemented opcode: {x}\n", chip.opcode)
   }
   
   // Decrement timers
@@ -647,7 +647,7 @@ pub fn main() void = {
       }
       
       val chip: mut ref Chip8 = new_chip8()
-      match chip8_load(chip, arg) {
+      match trust chip8_load(chip, arg) {
         ok _ => {
           stdio.puts("ROM loaded successfully!")
           stdio.puts("Display dimensions: 64x32 pixels")
