@@ -730,7 +730,7 @@ pub fn main() void = {
       trust SDL_Quit()
     }
     none => {
-      stdio.puts("usage: cemu <rom file>")
+      stdio.puts("usage: chip8emu <rom file>")
     }
   }
 }
