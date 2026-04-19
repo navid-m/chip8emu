@@ -9,7 +9,7 @@ val DISPLAY_SIZE: usize = 2048
 val STACK_SIZE: usize = 16
 val NUM_KEYS: usize = 16
 val NUM_REGISTERS: usize = 16
-val PROGRAM_START: u16 = 0x200
+val PROGRAM_START: u16 = 200
 val FONT_START: usize = 0
 val FONT_SIZE: usize = 80
 
