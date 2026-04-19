@@ -52,6 +52,7 @@ extern (C) fn SDL_RenderCopy(r: ref void, t: ref void, src: ref void, dst: ref v
 extern (C) fn SDL_RenderPresent(r: ref void) void!                                                  = "SDL_RenderPresent"
 extern (C) fn SDL_PollEvent(event: ref void) i32!                                                   = "SDL_PollEvent"
 extern (C) fn SDL_Delay(ms: u32) void!                                                              = "SDL_Delay"
+extern (C) fn SDL_GetTicks() u32!                                                                   = "SDL_GetTicks"
 extern (C) fn SDL_GetError() ref char!                                                              = "SDL_GetError"
 
 extern (C) fn fopen(path: ref char, mode: ref char) ref void!                     = "fopen"
@@ -483,13 +484,19 @@ fn chip8_emulateCycle(chip: mut ref Chip8) void = {
     val yline: mut u16 = 0
     for {
       if yline >= height { break }
+      val actual_y: u16 = (py as u16) + yline
+      if actual_y >= DISPLAY_HEIGHT as u16 {
+        yline = yline + 1
+        continue
+      }
       val pixel: u8 = mem_get(chip, chip.I + yline)
       val xline: mut u8 = 0
       for {
         if xline >= 8 { break }
         if ((pixel & (0x80 >> (xline as u16))) != 0) {
-          val pos: u16 = ((px as u16) + (xline as u16)) + (((py as u16) + yline) * 64)
-          if ((pos as usize) < DISPLAY_SIZE) {
+          val actual_x: u16 = (px as u16) + (xline as u16)
+          if actual_x < DISPLAY_WIDTH as u16 {
+            val pos: u16 = actual_x + (actual_y * (DISPLAY_WIDTH as u16))
             val old: u8 = get_gfx(chip, pos as usize)
             if old == 1 {
               set_v(chip, 0xF, 1)
@@ -594,8 +601,6 @@ fn chip8_emulateCycle(chip: mut ref Chip8) void = {
     trust @printf("Unimplemented opcode: 0x{X}\n", chip.opcode as u32)
   }
 
-  if chip.delay_timer > 0 { chip.delay_timer = chip.delay_timer - 1 }
-  if chip.sound_timer > 0 { chip.sound_timer = chip.sound_timer - 1 }
 }
 
 fn speed_cycles(speed_level: i32) usize = {
@@ -606,6 +611,17 @@ fn speed_cycles(speed_level: i32) usize = {
 fn speed_delay_ms(speed_level: i32) u32 = {
   if speed_level >= 0 { return BASE_LOOP_DELAY_MS as u32 }
   return (BASE_LOOP_DELAY_MS - speed_level) as u32
+}
+
+fn chip8_update_timers(chip: mut ref Chip8, elapsed_ms: u32) void = {
+  val ticks_to_process: u32 = elapsed_ms / 16
+  val i: mut u32 = 0
+  for {
+    if i >= ticks_to_process { break }
+    if chip.delay_timer > 0 { chip.delay_timer = chip.delay_timer - 1 }
+    if chip.sound_timer > 0 { chip.sound_timer = chip.sound_timer - 1 }
+    i = i + 1
+  }
 }
 
 fn set_host_key(chip: ref Chip8, sym: i32, pressed: u8) void = {
@@ -703,6 +719,7 @@ pub fn main() void = {
       val event: ref void = @alloc(56)
       val running: mut bool = true
       val speed_level: mut i32 = DEFAULT_SPEED_LEVEL
+      val last_timer_tick: mut u32 = trust SDL_GetTicks()
 
       for {
         if !running { break }
@@ -712,6 +729,13 @@ pub fn main() void = {
           if cycle_idx >= cycles_this_tick { break }
           chip8_emulateCycle(chip)
           cycle_idx = cycle_idx + 1
+        }
+
+        val now_ticks: u32 = trust SDL_GetTicks()
+        val elapsed_ticks: u32 = now_ticks - last_timer_tick
+        if elapsed_ticks >= 16 {
+          chip8_update_timers(chip, elapsed_ticks)
+          last_timer_tick = last_timer_tick + ((elapsed_ticks / 16) * 16)
         }
 
         for {
