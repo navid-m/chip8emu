@@ -151,19 +151,19 @@ fn new_chip8() ref Chip8 = {
   for {
     if i >= MEMORY_SIZE { break }
     @append(chip.memory, 0)
-    i = i + 1
+    i++
   }
   i = 0
   for {
     if i >= NUM_REGISTERS { break }
     @append(chip.V, 0)
-    i = i + 1
+    i++
   }
   i = 0
   for {
     if i >= DISPLAY_SIZE { break }
     @append(chip.gfx, 0)
-    i = i + 1
+    i++
   }
   i = 0
   for {
