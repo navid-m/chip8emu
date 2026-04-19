@@ -608,9 +608,9 @@ pub fn main() void = {
   match @get(args, 1) {
     some arg => {
       if arg == "--about" {
-        stdio.puts("CEMU")
-        stdio.puts("By Navid M (c) 2025")
-        stdio.puts("https://gitlab.com/navid-m/cemu")
+        stdio.puts("chip8emu")
+        stdio.puts("By Navid M (c) 2026")
+        stdio.puts("https://github.com/navid-m/chip8emu")
         return
       }
 
