@@ -26,10 +26,12 @@ val SDLK_a: i32 = 97
 val SDLK_s: i32 = 115
 val SDLK_d: i32 = 100
 val SDLK_f: i32 = 102
+val SDLK_h: i32 = 104
 val SDLK_z: i32 = 122
 val SDLK_x: i32 = 120
 val SDLK_c: i32 = 99
 val SDLK_v: i32 = 118
+val SDLK_y: i32 = 121
 
 extern (C) fn SDL_Init(flags: u32) i32!                                                             = "SDL_Init"
 extern (C) fn SDL_Quit() void!                                                                      = "SDL_Quit"
@@ -67,6 +69,10 @@ val FONT_START: usize     = 0
 val FONT_SIZE: usize      = 80
 val WIN_W: i32            = 1024
 val WIN_H: i32            = 512
+val DEFAULT_SPEED_LEVEL: i32 = 0
+val MIN_SPEED_LEVEL: i32     = -9
+val MAX_SPEED_LEVEL: i32     = 9
+val BASE_LOOP_DELAY_MS: i32  = 1
 
 val chip8_fontset: mut list[u8] = [
   0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -588,6 +594,16 @@ fn chip8_emulateCycle(chip: mut ref Chip8) void = {
   if chip.sound_timer > 0 { chip.sound_timer = chip.sound_timer - 1 }
 }
 
+fn speed_cycles(speed_level: i32) usize = {
+  if speed_level <= 0 { return 1 }
+  return (speed_level as usize) + 1
+}
+
+fn speed_delay_ms(speed_level: i32) u32 = {
+  if speed_level >= 0 { return BASE_LOOP_DELAY_MS as u32 }
+  return (BASE_LOOP_DELAY_MS - speed_level) as u32
+}
+
 fn event_type(ev: ref void) u32 = {
   return trust @load(ev) as u32
 }
@@ -649,10 +665,17 @@ pub fn main() void = {
       val pixels: ref void = @alloc(DISPLAY_SIZE * 4)
       val event: ref void = @alloc(56)
       val running: mut bool = true
+      val speed_level: mut i32 = DEFAULT_SPEED_LEVEL
 
       for {
         if !running { break }
-        chip8_emulateCycle(chip)
+        val cycles_this_tick: usize = speed_cycles(speed_level)
+        val cycle_idx: mut usize = 0
+        for {
+          if cycle_idx >= cycles_this_tick { break }
+          chip8_emulateCycle(chip)
+          cycle_idx = cycle_idx + 1
+        }
 
         for {
           if trust SDL_PollEvent(event) == 0 { break }
@@ -666,19 +689,28 @@ pub fn main() void = {
             if sym == SDLK_ESCAPE {
               running = false
               break
-            }
-            val ki: mut usize = 0
-            for {
-              if ki >= NUM_KEYS { break }
-              match @get(keypad_map, ki) {
-                some mapped => {
-                  if mapped == sym {
-                    set_key(chip, ki, 1)
-                  }
-                }
-                none => { }
+            } elif sym == SDLK_y {
+              if speed_level < MAX_SPEED_LEVEL {
+                speed_level = speed_level + 1
               }
-              ki = ki + 1
+            } elif sym == SDLK_h {
+              if speed_level > MIN_SPEED_LEVEL {
+                speed_level = speed_level - 1
+              }
+            } else {
+              val ki: mut usize = 0
+              for {
+                if ki >= NUM_KEYS { break }
+                match @get(keypad_map, ki) {
+                  some mapped => {
+                    if mapped == sym {
+                      set_key(chip, ki, 1)
+                    }
+                  }
+                  none => { }
+                }
+                ki = ki + 1
+              }
             }
           }
           if ev_type == SDL_KEYUP {
@@ -719,7 +751,7 @@ pub fn main() void = {
           trust SDL_RenderPresent(renderer)
         }
 
-        trust SDL_Delay(1)
+        trust SDL_Delay(speed_delay_ms(speed_level))
       }
 
       trust @free(pixels)
