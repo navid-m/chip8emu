@@ -751,69 +751,73 @@ fn event_keysym(ev: ref void) i32 = {
 }
 
 pub fn main() void = {
-  val args = @args()
+    val args = @args()
 
-  if @len(args) < 2 {
-    stdio.puts("usage: chip8emu <rom file>")
-    return
-  }
-
-  match @get(args, 1) {
-    some arg => {
-      if arg == "--about" {
-        stdio.puts("chip8emu")
-        stdio.puts("By Navid M (c) 2026")
-        stdio.puts("https://github.com/navid-m/chip8emu")
+    if @len(args) < 2 {
+        stdio.puts("usage: chip8emu <rom file>")
         return
-      }
+    }
 
-      val chip: mut ref Chip8 = new_chip8()
-      if !chip8_load(chip, arg) {
-        return
-      }
+    match @get(args, 1) {
+        some arg => {
+            if arg == "--about" {
+                stdio.puts("chip8emu")
+                stdio.puts("By Navid M (c) 2026")
+                stdio.puts("https://github.com/navid-m/chip8emu")
+                return
+            }
 
-      if trust SDL_Init(SDL_INIT_EVERYTHING) != 0 {
-        stdio.puts("SDL could not initialise")
-        return
-      }
+            val chip: mut ref Chip8 = new_chip8()
+            if !chip8_load(chip, arg) {
+                return
+            }
 
-      val window: ref void = trust SDL_CreateWindow(
-        "chip8emu",
-        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-        WIN_W, WIN_H,
-        SDL_WINDOW_SHOWN
-      )
-      if window == none {
-        stdio.puts("Window could not be created")
-        trust SDL_Quit()
-        return
-      }
+            if trust SDL_Init(SDL_INIT_EVERYTHING) != 0 {
+                stdio.puts("SDL could not initialise")
+                return
+            }
 
-      val renderer: ref void = trust SDL_CreateRenderer(window, -1 as i32, 0 as u32)
-      trust SDL_RenderSetLogicalSize(renderer, WIN_W, WIN_H)
+            val window: ref void = trust SDL_CreateWindow(
+                "chip8emu",
+                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                WIN_W, WIN_H,
+                SDL_WINDOW_SHOWN
+            )
+            if window == none {
+                stdio.puts("Window could not be created")
+                trust SDL_Quit()
+                return
+            }
 
-      val texture: ref void = trust SDL_CreateTexture(
-        renderer,
-        SDL_PIXELFORMAT_ARGB8888,
-        SDL_TEXTUREACCESS_STREAMING,
-        64 as i32, 32 as i32
-      )
+            val renderer: ref void = trust SDL_CreateRenderer(window, -1 as i32, 0 as u32)
+            trust SDL_RenderSetLogicalSize(renderer, WIN_W, WIN_H)
 
-      val pixels: ref void = @alloc(DISPLAY_SIZE * 4)
-      val event: ref void = @alloc(56)
-      val running: mut bool = true
-      val speed_level: mut i32 = DEFAULT_SPEED_LEVEL
-      val last_timer_tick: mut u32 = trust SDL_GetTicks()
+            val texture: ref void = trust SDL_CreateTexture(
+                renderer,
+                SDL_PIXELFORMAT_ARGB8888,
+                SDL_TEXTUREACCESS_STREAMING,
+                64 as i32, 32 as i32
+            )
 
-      for {
-        if !running { break }
-        val cycles_this_tick: usize = speed_cycles(speed_level)
-        val cycle_idx: mut usize = 0
-        for {
-          if cycle_idx >= cycles_this_tick { break }
-          chip8_emulateCycle(chip)
-          cycle_idx = cycle_idx + 1
-        }
+            val pixels: ref void = @alloc(DISPLAY_SIZE * 4)
+            val event: ref void = @alloc(56)
+            val running: mut bool = true
+            val speed_level: mut i32 = DEFAULT_SPEED_LEVEL
+            val last_timer_tick: mut u32 = trust SDL_GetTicks()
+
+            for {
+                if !running {
+                    break
+                }
+                val cycles_this_tick: usize = speed_cycles(speed_level)
+                val cycle_idx: mut usize = 0
+                for {
+                    if cycle_idx >= cycles_this_tick {
+                        break
+                    }
+                    chip8_emulateCycle(chip)
+                    cycle_idx = cycle_idx + 1
+                }
 
                 val now_ticks: u32 = trust SDL_GetTicks()
                 val elapsed_ticks: u32 = now_ticks - last_timer_tick
@@ -822,68 +826,74 @@ pub fn main() void = {
                     last_timer_tick = last_timer_tick + ((elapsed_ticks / 16) * 16)
                 }
 
-        for {
-          if trust SDL_PollEvent(event) == 0 { break }
-          val ev_type: u32 = event_type(event)
-          if ev_type == SDL_QUIT {
-            running = false
-            break
-          }
-          if ev_type == SDL_KEYDOWN {
-            val sym: i32 = event_keysym(event)
-            if sym == SDLK_ESCAPE {
-              running = false
-              break
-            } elif sym == SDLK_y {
-              if speed_level < MAX_SPEED_LEVEL {
-                speed_level = speed_level + 1
-              }
-            } elif sym == SDLK_h {
-              if speed_level > MIN_SPEED_LEVEL {
-                speed_level = speed_level - 1
-              }
-            } else {
-              set_host_key(chip, sym, 1 as u8)
+                for {
+                    if trust SDL_PollEvent(event) == 0 {
+                        break
+                    }
+                    val ev_type: u32 = event_type(event)
+                    if ev_type == SDL_QUIT {
+                        running = false
+                        break
+                    }
+                    if ev_type == SDL_KEYDOWN {
+                        val sym: i32 = event_keysym(event)
+                        if sym == SDLK_ESCAPE {
+                            running = false
+                            break
+                        } elif sym == SDLK_y {
+                            if speed_level < MAX_SPEED_LEVEL {
+                                speed_level = speed_level + 1
+                            }
+                        } elif sym == SDLK_h {
+                            if speed_level > MIN_SPEED_LEVEL {
+                                speed_level = speed_level - 1
+                            }
+                        } else {
+                            set_host_key(chip, sym, 1 as u8)
+                        }
+                    }
+                    if ev_type == SDL_KEYUP {
+                        val sym: i32 = event_keysym(event)
+                        set_host_key(chip, sym, 0 as u8)
+                    }
+                }
+
+                if chip.drawFlag {
+                    chip.drawFlag = false
+                    val i: mut usize = 0
+                    for {
+                        if i >= DISPLAY_SIZE {
+                            break
+                        }
+                        val px: u8 = get_gfx(chip, i)
+                        val pixel_ptr: ref void = trust @ptradd(pixels, (i as i64) * 4)
+                        if px != 0 {
+                            trust @store(pixel_ptr, 0xFFFFFFFF as u32)
+                        } else {
+                            trust @store(pixel_ptr, 0xFF000000 as u32)
+                        }
+                        i = i + 1
+                    }
+                    trust {
+                        SDL_UpdateTexture(texture, none, pixels, 64 * 4)
+                        SDL_RenderClear(renderer)
+                        SDL_RenderCopy(renderer, texture, none, none)
+                        SDL_RenderPresent(renderer)
+                    }
+                }
+
+                trust SDL_Delay(speed_delay_ms(speed_level))
             }
-          }
-          if ev_type == SDL_KEYUP {
-            val sym: i32 = event_keysym(event)
-            set_host_key(chip, sym, 0 as u8)
-          }
+
+            trust @free(pixels)
+            trust @free(event)
+            trust SDL_DestroyTexture(texture)
+            trust SDL_DestroyRenderer(renderer)
+            trust SDL_DestroyWindow(window)
+            trust SDL_Quit()
         }
-
-        if chip.drawFlag {
-          chip.drawFlag = false
-          val i: mut usize = 0
-          for {
-            if i >= DISPLAY_SIZE { break }
-            val px: u8 = get_gfx(chip, i)
-            val pixel_ptr: ref void = trust @ptradd(pixels, (i as i64) * 4)
-            if px != 0 {
-              trust @store(pixel_ptr, 0xFFFFFFFF as u32)
-            } else {
-              trust @store(pixel_ptr, 0xFF000000 as u32)
-            }
-            i = i + 1
-          }
-          trust SDL_UpdateTexture(texture, none, pixels, 64 * 4)
-          trust SDL_RenderClear(renderer)
-          trust SDL_RenderCopy(renderer, texture, none, none)
-          trust SDL_RenderPresent(renderer)
+        none => {
+            stdio.puts("usage: chip8emu <rom file>")
         }
-
-        trust SDL_Delay(speed_delay_ms(speed_level))
-      }
-
-      trust @free(pixels)
-      trust @free(event)
-      trust SDL_DestroyTexture(texture)
-      trust SDL_DestroyRenderer(renderer)
-      trust SDL_DestroyWindow(window)
-      trust SDL_Quit()
     }
-    none => {
-      stdio.puts("usage: chip8emu <rom file>")
-    }
-  }
 }
