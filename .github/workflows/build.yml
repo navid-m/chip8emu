@@ -268,9 +268,17 @@ jobs:
           # Rebuild the compiler from source so the CI compiler is current.
           # Force MinGW's cc; clang on the Windows PATH targets MSVC.
           COMPILER_SRC="$(cygpath -w "$HOME/.local/src/spectre/src/sxc.sx")"
-          COMPILER_OUT="$(cygpath -w "$HOME/.local/bin/spectre.exe")"
-          "$HOME/.local/seed/spectre.exe" "$COMPILER_SRC" \
-            --release --alt="$CC_PATH" -o "$COMPILER_OUT"
+          COMPILER_OUT_POSIX="$HOME/.local/bin/spectre.exe"
+          COMPILER_OUT="$(cygpath -w "$COMPILER_OUT_POSIX")"
+          set +e
+          timeout 600 "$HOME/.local/seed/spectre.exe" "$COMPILER_SRC" \
+            --release --alt="$CC_PATH" --show-cmd -l -o "$COMPILER_OUT"
+          rebuild_status=$?
+          set -e
+          if [ "$rebuild_status" -ne 0 ] || [ ! -f "$COMPILER_OUT_POSIX" ]; then
+            echo "warning: compiler self-rebuild failed (exit $rebuild_status); using the bootstrap seed compiler" >&2
+            cp "$HOME/.local/seed/spectre.exe" "$COMPILER_OUT_POSIX"
+          fi
           cp -r spectrelib "$HOME/.local/bin/spectrelib"
           for dll in libgcc_s_seh-1.dll libwinpthread-1.dll libssp-0.dll; do
             if [ -f "/mingw64/bin/$dll" ]; then
