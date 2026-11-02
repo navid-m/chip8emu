@@ -3,5 +3,8 @@
 cemu
 SPECTRE_LANGUAGE_REFERENCE.md
 lib/
+std__*
+.DS_Store
 s-out/
 std
+*.ch8
