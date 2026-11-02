@@ -1,3 +1,5 @@
+*-dev
+*.dSYM
 cemu
 SPECTRE_LANGUAGE_REFERENCE.md
 lib/
