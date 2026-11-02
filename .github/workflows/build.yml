@@ -204,17 +204,28 @@ jobs:
           update: true
           install: >-
             git
-            make
             zip
-            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-SDL2
+
+      - name: Verify MinGW toolchain
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          export PATH="/mingw64/bin:/usr/bin:$PATH"
+          gcc --version
+          cc --version
+          printf 'int main(void){return 0;}\n' > /tmp/toolchain_check.c
+          gcc /tmp/toolchain_check.c -o /tmp/toolchain_check.exe
+          /tmp/toolchain_check.exe
 
       - name: Build Spectre
         shell: msys2 {0}
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           export PATH="/mingw64/bin:/usr/bin:$PATH"
           command -v gcc
+          gcc --version
           mkdir -p "$HOME/.local/src" "$HOME/.local/bin"
           git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
           git clone --depth 1 https://github.com/ibireme/yyjson.git "$HOME/.local/src/yyjson"
