@@ -226,6 +226,7 @@ jobs:
           export PATH="/mingw64/bin:/usr/bin:$PATH"
           command -v gcc
           gcc --version
+          CC_PATH="$(cygpath -w "$(command -v x86_64-w64-mingw32-gcc || command -v gcc)")"
           mkdir -p "$HOME/.local/src" "$HOME/.local/bin"
           git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
           git clone --depth 1 https://github.com/ibireme/yyjson.git "$HOME/.local/src/yyjson"
@@ -241,22 +242,42 @@ jobs:
 
           # Seed compiler from the checked-in bootstrap.
           mkdir -p "$HOME/.local/seed"
-          gcc -O2 -w -Wno-error=int-conversion \
+          gcc -O2 -static -w -Wno-error=int-conversion \
             bootstrap/sxcw.c \
             "$HOME/.local/src/panic_handler.o" \
             "$HOME/.local/src/yyjson_shim.o" \
             "$HOME/.local/src/yyjson.o" \
             -ldbghelp \
             -o "$HOME/.local/seed/spectre.exe"
+          for dll in libgcc_s_seh-1.dll libwinpthread-1.dll libssp-0.dll; do
+            if [ -f "/mingw64/bin/$dll" ]; then
+              cp "/mingw64/bin/$dll" "$HOME/.local/seed/"
+            fi
+          done
           cp -r spectrelib "$HOME/.local/seed/spectrelib"
+          "$HOME/.local/seed/spectre.exe" -v
+
+          # Prove the seed compiler can invoke MinGW cc before rebuilding it.
+          printf 'pub fn main() void = {}\n' > /tmp/seed_check.sx
+          SEED_CHECK_SRC="$(cygpath -w /tmp/seed_check.sx)"
+          SEED_CHECK_OUT="$(cygpath -w /tmp/seed_check.exe)"
+          "$HOME/.local/seed/spectre.exe" "$SEED_CHECK_SRC" \
+            --release --alt="$CC_PATH" -o "$SEED_CHECK_OUT"
+          "$SEED_CHECK_OUT"
 
           # Rebuild the compiler from source so the CI compiler is current.
           # Force MinGW's cc; clang on the Windows PATH targets MSVC.
           COMPILER_SRC="$(cygpath -w "$HOME/.local/src/spectre/src/sxc.sx")"
           COMPILER_OUT="$(cygpath -w "$HOME/.local/bin/spectre.exe")"
           "$HOME/.local/seed/spectre.exe" "$COMPILER_SRC" \
-            --release --alt=cc -o "$COMPILER_OUT"
+            --release --alt="$CC_PATH" -o "$COMPILER_OUT"
           cp -r spectrelib "$HOME/.local/bin/spectrelib"
+          for dll in libgcc_s_seh-1.dll libwinpthread-1.dll libssp-0.dll; do
+            if [ -f "/mingw64/bin/$dll" ]; then
+              cp "/mingw64/bin/$dll" "$HOME/.local/bin/"
+            fi
+          done
+          "$HOME/.local/bin/spectre.exe" -v
 
           cygpath -w "$HOME/.local/bin" >> "$GITHUB_PATH"
 
@@ -265,10 +286,11 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$HOME/.local/bin:/mingw64/bin:/usr/bin:$PATH"
+          CC_PATH="$(cygpath -w "$(command -v x86_64-w64-mingw32-gcc || command -v gcc)")"
 
           WORKSPACE="$(cygpath -u "$GITHUB_WORKSPACE")"
           cd "$WORKSPACE"
-          spectre ./src/main.sx --release --dynamic --alt=cc -o chip8emu
+          spectre ./src/main.sx --release --dynamic --alt="$CC_PATH" -o chip8emu
 
           if [ -f chip8emu.exe ]; then
             exe=chip8emu.exe
