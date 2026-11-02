@@ -746,7 +746,7 @@ fn event_type(ev: ref void) u32 = {
 }
 
 fn event_keysym(ev: ref void) i32 = {
-    val sym_ptr: ref void = trust @ptradd(ev, 16)
+    val sym_ptr: ref void = trust @ptradd(ev, 20)
     return trust @load(sym_ptr) as i32
 }
 
