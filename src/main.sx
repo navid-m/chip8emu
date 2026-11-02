@@ -1,7 +1,6 @@
 lib "sdl2"
 link "-lSDL2"
 
-
 val stdio  = use("std/stdio")
 val random = use("std/crypto/random")
 
