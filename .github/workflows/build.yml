@@ -41,9 +41,11 @@ jobs:
           mkdir -p "$HOME/.local/src"
           git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
           cd "$HOME/.local/src/spectre"
+          export PATH="$HOME/.local/bin:$PATH"
           ./fw/install.sh -minimal
 
           export PATH="$HOME/.local/bin:$PATH"
+          export YYJSON_DIR="$HOME/.local/src/yyjson"
           make
           /usr/bin/install -m 0755 ./spectre-dev "$HOME/.local/bin/spectre"
 
@@ -129,9 +131,11 @@ jobs:
           mkdir -p "$HOME/.local/src"
           git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
           cd "$HOME/.local/src/spectre"
+          export PATH="$HOME/.local/bin:$PATH"
           ./fw/install.sh -minimal
 
           export PATH="$HOME/.local/bin:$PATH"
+          export YYJSON_DIR="$HOME/.local/src/yyjson"
           make
           /usr/bin/install -m 0755 ./spectre-dev "$HOME/.local/bin/spectre"
 
@@ -209,6 +213,8 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          export PATH="/mingw64/bin:/usr/bin:$PATH"
+          command -v gcc
           mkdir -p "$HOME/.local/src" "$HOME/.local/bin"
           git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
           git clone --depth 1 https://github.com/ibireme/yyjson.git "$HOME/.local/src/yyjson"
@@ -247,7 +253,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          export PATH="$HOME/.local/bin:$PATH"
+          export PATH="$HOME/.local/bin:/mingw64/bin:/usr/bin:$PATH"
 
           WORKSPACE="$(cygpath -u "$GITHUB_WORKSPACE")"
           cd "$WORKSPACE"
@@ -280,6 +286,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          export PATH="/mingw64/bin:/usr/bin:$PATH"
           WORKSPACE="$(cygpath -u "$GITHUB_WORKSPACE")"
           cd "$WORKSPACE"
           printf '\x00\xe0\x12\x00' > test.ch8
