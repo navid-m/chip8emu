@@ -1,0 +1,118 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-appimage:
+    name: Linux x86_64 AppImage
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            git \
+            clang \
+            tcc \
+            libsdl2-dev \
+            libfuse2 \
+            desktop-file-utils \
+            xvfb \
+            libgl1-mesa-dev
+
+      - name: Install Spectre
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/src"
+          git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
+          cd "$HOME/.local/src/spectre"
+          ./fw/install.sh
+
+          # The installer bootstraps from the checked-in bootstrap artifacts.
+          # Rebuild from source so CI always uses the current compiler code.
+          export PATH="$HOME/.local/bin:$PATH"
+          make
+          /usr/bin/install -m 0755 ./spectre-dev "$HOME/.local/bin/spectre"
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build emulator
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          spectre build release
+          test -x ./chip8emu
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          set +e
+          SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy timeout 3 \
+            xvfb-run -a ./chip8emu Cave.ch8
+          status=$?
+          set -e
+          # 124 means the emulator was still running when timeout fired.
+          test "$status" -eq 124
+
+      - name: Build AppImage
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/AppDir/usr/bin"
+          cp ./chip8emu "$RUNNER_TEMP/AppDir/usr/bin/chip8emu"
+
+          curl -fsSL -o "$RUNNER_TEMP/linuxdeploy" \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x "$RUNNER_TEMP/linuxdeploy"
+
+          cd "$RUNNER_TEMP"
+          APPIMAGE_EXTRACT_AND_RUN=1 ./linuxdeploy \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/chip8emu \
+            --desktop-file "$GITHUB_WORKSPACE/packaging/chip8emu.desktop" \
+            --icon-file "$GITHUB_WORKSPACE/packaging/chip8emu.png" \
+            --output appimage
+
+          mv ./*.AppImage "$GITHUB_WORKSPACE/chip8emu-x86_64.AppImage"
+
+      - name: Smoke test AppImage
+        run: |
+          set -euo pipefail
+          set +e
+          APPIMAGE_EXTRACT_AND_RUN=1 \
+          SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy timeout 3 \
+            xvfb-run -a ./chip8emu-x86_64.AppImage Cave.ch8
+          status=$?
+          set -e
+          test "$status" -eq 124
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: chip8emu-linux-x86_64
+          path: chip8emu-x86_64.AppImage
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: chip8emu-x86_64.AppImage

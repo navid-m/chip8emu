@@ -4,7 +4,8 @@ link "-lSDL2"
 val stdio  = use("std/stdio")
 val random = use("std/crypto/random")
 
-val SDL_INIT_EVERYTHING: u32 = 62001
+// SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_EVENTS
+val SDL_INIT_VIDEO_TIMER: u32 = 16417
 val SDL_WINDOW_SHOWN: u32 = 4
 val SDL_WINDOWPOS_UNDEFINED: i32 = 536805376
 val SDL_PIXELFORMAT_ARGB8888: u32 = 372645892
@@ -772,7 +773,7 @@ pub fn main() void = {
                 return
             }
 
-            if trust SDL_Init(SDL_INIT_EVERYTHING) != 0 {
+            if trust SDL_Init(SDL_INIT_VIDEO_TIMER) != 0 {
                 stdio.puts("SDL could not initialise")
                 return
             }

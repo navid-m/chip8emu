@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=chip8emu
+Comment=A CHIP-8 emulator
+Exec=chip8emu
+Icon=chip8emu
+Terminal=false
+Categories=Game;Emulator;
