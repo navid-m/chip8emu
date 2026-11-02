@@ -2,10 +2,7 @@ name: build
 
 on:
   push:
-    branches: [master]
     tags: ["v*"]
-  pull_request:
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -46,8 +43,6 @@ jobs:
           cd "$HOME/.local/src/spectre"
           ./fw/install.sh
 
-          # The installer bootstraps from the checked-in bootstrap artifacts.
-          # Rebuild from source so CI always uses the current compiler code.
           export PATH="$HOME/.local/bin:$PATH"
           make
           /usr/bin/install -m 0755 ./spectre-dev "$HOME/.local/bin/spectre"
@@ -64,12 +59,12 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
+          python3 -c 'open("test.ch8", "wb").write(bytes([0x00, 0xE0, 0x12, 0x00]))'
           set +e
           SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy timeout 3 \
-            xvfb-run -a ./chip8emu Cave.ch8
+            xvfb-run -a ./chip8emu test.ch8
           status=$?
           set -e
-          # 124 means the emulator was still running when timeout fired.
           test "$status" -eq 124
 
       - name: Build AppImage
@@ -98,7 +93,7 @@ jobs:
           set +e
           APPIMAGE_EXTRACT_AND_RUN=1 \
           SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy timeout 3 \
-            xvfb-run -a ./chip8emu-x86_64.AppImage Cave.ch8
+            xvfb-run -a ./chip8emu-x86_64.AppImage test.ch8
           status=$?
           set -e
           test "$status" -eq 124
@@ -109,10 +104,189 @@ jobs:
           name: chip8emu-linux-x86_64
           path: chip8emu-x86_64.AppImage
           if-no-files-found: error
-          retention-days: 14
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            arch: arm64
+          - os: macos-26-intel
+            arch: x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Spectre
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/src"
+          git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
+          cd "$HOME/.local/src/spectre"
+          ./fw/install.sh
+
+          export PATH="$HOME/.local/bin:$PATH"
+          make
+          /usr/bin/install -m 0755 ./spectre-dev "$HOME/.local/bin/spectre"
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install SDL2 and packaging tools
+        run: |
+          brew install sdl2 pkg-config dylibbundler
+
+      - name: Build emulator
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          spectre build release
+          test -x ./chip8emu
+
+      - name: Bundle dylibs
+        run: |
+          set -euo pipefail
+          mkdir -p dist/libs
+          cp ./chip8emu dist/chip8emu
+          dylibbundler -od -b \
+            -x dist/chip8emu \
+            -d dist/libs \
+            -p @executable_path/libs/
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          python3 -c 'open("test.ch8", "wb").write(bytes([0x00, 0xE0, 0x12, 0x00]))'
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./dist/chip8emu test.ch8 &
+          pid=$!
+          sleep 3
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || true
+            echo "chip8emu exited during smoke test"
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          cd dist
+          zip -r "../chip8emu-macos-${{ matrix.arch }}.zip" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chip8emu-macos-${{ matrix.arch }}
+          path: chip8emu-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86_64
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          choco install llvm tinycc -y --no-progress
+          $llvmBin = "C:\Program Files\LLVM\bin"
+          if (Test-Path $llvmBin) {
+            $env:PATH = "$llvmBin;$env:PATH"
+            $llvmBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+
+      - name: Install Spectre
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $spectreSrc = "$env:USERPROFILE\.local\src\spectre"
+          New-Item -ItemType Directory -Force -Path (Split-Path $spectreSrc) | Out-Null
+          git clone https://github.com/spectrelang/spectre.git $spectreSrc
+          Push-Location $spectreSrc
+          .\fw\install.ps1
+          Pop-Location
+
+          $spectre = "$env:USERPROFILE\.local\bin\spectre.exe"
+          & $spectre "$spectreSrc\src\sxc.sx" -o "$spectreSrc\spectre-dev.exe"
+          if (-not (Test-Path "$spectreSrc\spectre-dev.exe")) {
+            throw "Failed to rebuild Spectre"
+          }
+          Copy-Item "$spectreSrc\spectre-dev.exe" $spectre -Force
+
+          "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install SDL2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = "$env:RUNNER_TEMP\SDL2-devel.zip"
+          $sdlRoot = "$env:RUNNER_TEMP\SDL2-devel"
+          Invoke-WebRequest -Uri "https://github.com/libsdl-org/SDL/releases/download/release-2.30.0/SDL2-devel-2.30.0-VC.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $sdlRoot -Force
+
+          $sdl = Join-Path $sdlRoot "SDL2-2.30.0"
+          if (-not (Test-Path "$sdl\lib\x64\SDL2.lib")) {
+            throw "SDL2 import library not found"
+          }
+
+          "SDL2_ROOT=$sdl" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LIB=$sdl\lib\x64;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$sdl\lib\x64;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build emulator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          spectre build release
+
+          $exe = if (Test-Path ".\chip8emu.exe") { ".\chip8emu.exe" } elseif (Test-Path ".\chip8emu") { ".\chip8emu" } else { throw "chip8emu executable not found" }
+
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item $exe "dist\chip8emu.exe" -Force
+          Copy-Item "$env:SDL2_ROOT\lib\x64\SDL2.dll" "dist\SDL2.dll" -Force
+
+          Compress-Archive -Path "dist\*" -DestinationPath "chip8emu-windows-x86_64.zip" -Force
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          [IO.File]::WriteAllBytes("$PWD\test.ch8", [byte[]](0x00, 0xE0, 0x12, 0x00))
+          $env:SDL_VIDEODRIVER = "dummy"
+          $env:SDL_AUDIODRIVER = "dummy"
+          $p = Start-Process -FilePath ".\dist\chip8emu.exe" -ArgumentList "test.ch8" -PassThru
+          Start-Sleep -Seconds 3
+          $p.Refresh()
+          if ($p.HasExited) {
+            throw "chip8emu exited during smoke test with code $($p.ExitCode)"
+          }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chip8emu-windows-x86_64
+          path: chip8emu-windows-x86_64.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [linux-appimage, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: chip8emu-x86_64.AppImage
+          files: artifacts/*

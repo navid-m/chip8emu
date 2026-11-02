@@ -1,10 +1,14 @@
-lib "sdl2"
-link "-lSDL2"
-
 val stdio  = use("std/stdio")
 val random = use("std/crypto/random")
 
-// SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_EVENTS
+when windows {
+    link "SDL2.lib"
+}
+
+when posix {
+    lib "sdl2"
+}
+
 val SDL_INIT_VIDEO_TIMER: u32 = 16417
 val SDL_WINDOW_SHOWN: u32 = 4
 val SDL_WINDOWPOS_UNDEFINED: i32 = 536805376
