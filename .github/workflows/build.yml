@@ -41,7 +41,7 @@ jobs:
           mkdir -p "$HOME/.local/src"
           git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
           cd "$HOME/.local/src/spectre"
-          ./fw/install.sh
+          ./fw/install.sh -minimal
 
           export PATH="$HOME/.local/bin:$PATH"
           make
@@ -108,6 +108,9 @@ jobs:
   macos:
     name: macOS ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
     strategy:
       fail-fast: false
       matrix:
@@ -126,7 +129,7 @@ jobs:
           mkdir -p "$HOME/.local/src"
           git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
           cd "$HOME/.local/src/spectre"
-          ./fw/install.sh
+          ./fw/install.sh -minimal
 
           export PATH="$HOME/.local/bin:$PATH"
           make
@@ -190,83 +193,108 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build tools
-        shell: pwsh
+      - name: Setup MSYS2 / MinGW
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            make
+            zip
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-SDL2
+
+      - name: Build Spectre
+        shell: msys2 {0}
         run: |
-          $ErrorActionPreference = "Stop"
-          choco install llvm tinycc -y --no-progress
-          $llvmBin = "C:\Program Files\LLVM\bin"
-          if (Test-Path $llvmBin) {
-            $env:PATH = "$llvmBin;$env:PATH"
-            $llvmBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          }
+          set -euo pipefail
+          mkdir -p "$HOME/.local/src" "$HOME/.local/bin"
+          git clone https://github.com/spectrelang/spectre.git "$HOME/.local/src/spectre"
+          git clone --depth 1 https://github.com/ibireme/yyjson.git "$HOME/.local/src/yyjson"
 
-      - name: Install Spectre
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $spectreSrc = "$env:USERPROFILE\.local\src\spectre"
-          New-Item -ItemType Directory -Force -Path (Split-Path $spectreSrc) | Out-Null
-          git clone https://github.com/spectrelang/spectre.git $spectreSrc
-          Push-Location $spectreSrc
-          .\fw\install.ps1
-          Pop-Location
+          cd "$HOME/.local/src/spectre"
+          gcc -O2 -DYYJSON_STATIC -w -Wno-error=int-conversion \
+            -c "$HOME/.local/src/yyjson/src/yyjson.c" -o "$HOME/.local/src/yyjson.o"
+          gcc -O2 -w -Wno-error=int-conversion \
+            -c spectrelib/csources/panic_handler.c -o "$HOME/.local/src/panic_handler.o"
+          gcc -O2 -w -Wno-error=int-conversion \
+            -I"$HOME/.local/src/yyjson/src" \
+            -c spectrelib/csources/yyjson_shim.c -o "$HOME/.local/src/yyjson_shim.o"
 
-          $spectre = "$env:USERPROFILE\.local\bin\spectre.exe"
-          & $spectre "$spectreSrc\src\sxc.sx" -o "$spectreSrc\spectre-dev.exe"
-          if (-not (Test-Path "$spectreSrc\spectre-dev.exe")) {
-            throw "Failed to rebuild Spectre"
-          }
-          Copy-Item "$spectreSrc\spectre-dev.exe" $spectre -Force
+          # Seed compiler from the checked-in bootstrap.
+          mkdir -p "$HOME/.local/seed"
+          gcc -O2 -w -Wno-error=int-conversion \
+            bootstrap/sxcw.c \
+            "$HOME/.local/src/panic_handler.o" \
+            "$HOME/.local/src/yyjson_shim.o" \
+            "$HOME/.local/src/yyjson.o" \
+            -ldbghelp \
+            -o "$HOME/.local/seed/spectre.exe"
+          cp -r spectrelib "$HOME/.local/seed/spectrelib"
 
-          "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # Rebuild the compiler from source so the CI compiler is current.
+          # Force MinGW's cc; clang on the Windows PATH targets MSVC.
+          COMPILER_SRC="$(cygpath -w "$HOME/.local/src/spectre/src/sxc.sx")"
+          COMPILER_OUT="$(cygpath -w "$HOME/.local/bin/spectre.exe")"
+          "$HOME/.local/seed/spectre.exe" "$COMPILER_SRC" \
+            --release --alt=cc -o "$COMPILER_OUT"
+          cp -r spectrelib "$HOME/.local/bin/spectrelib"
 
-      - name: Install SDL2
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $zip = "$env:RUNNER_TEMP\SDL2-devel.zip"
-          $sdlRoot = "$env:RUNNER_TEMP\SDL2-devel"
-          Invoke-WebRequest -Uri "https://github.com/libsdl-org/SDL/releases/download/release-2.30.0/SDL2-devel-2.30.0-VC.zip" -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath $sdlRoot -Force
-
-          $sdl = Join-Path $sdlRoot "SDL2-2.30.0"
-          if (-not (Test-Path "$sdl\lib\x64\SDL2.lib")) {
-            throw "SDL2 import library not found"
-          }
-
-          "SDL2_ROOT=$sdl" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LIB=$sdl\lib\x64;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "PATH=$sdl\lib\x64;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          cygpath -w "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Build emulator
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          $ErrorActionPreference = "Stop"
-          spectre build release
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
 
-          $exe = if (Test-Path ".\chip8emu.exe") { ".\chip8emu.exe" } elseif (Test-Path ".\chip8emu") { ".\chip8emu" } else { throw "chip8emu executable not found" }
+          WORKSPACE="$(cygpath -u "$GITHUB_WORKSPACE")"
+          cd "$WORKSPACE"
+          spectre ./src/main.sx --release --dynamic --alt=cc -o chip8emu
 
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item $exe "dist\chip8emu.exe" -Force
-          Copy-Item "$env:SDL2_ROOT\lib\x64\SDL2.dll" "dist\SDL2.dll" -Force
+          if [ -f chip8emu.exe ]; then
+            exe=chip8emu.exe
+          elif [ -f chip8emu ]; then
+            exe=chip8emu
+          else
+            echo "chip8emu executable not found" >&2
+            exit 1
+          fi
 
-          Compress-Archive -Path "dist\*" -DestinationPath "chip8emu-windows-x86_64.zip" -Force
+          mkdir -p dist
+          cp "$exe" dist/chip8emu.exe
+          cp /mingw64/bin/SDL2.dll dist/SDL2.dll
+
+          ldd dist/chip8emu.exe dist/SDL2.dll 2>/dev/null \
+            | grep -o '/mingw64/bin/[^ ]*' \
+            | xargs -r -n1 basename \
+            | sort -u \
+            | while read -r dll; do
+                [ -f "/mingw64/bin/$dll" ] && cp "/mingw64/bin/$dll" dist/
+              done
+
+          zip -r chip8emu-windows-x86_64.zip dist
 
       - name: Smoke test
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          $ErrorActionPreference = "Stop"
-          [IO.File]::WriteAllBytes("$PWD\test.ch8", [byte[]](0x00, 0xE0, 0x12, 0x00))
-          $env:SDL_VIDEODRIVER = "dummy"
-          $env:SDL_AUDIODRIVER = "dummy"
-          $p = Start-Process -FilePath ".\dist\chip8emu.exe" -ArgumentList "test.ch8" -PassThru
-          Start-Sleep -Seconds 3
-          $p.Refresh()
-          if ($p.HasExited) {
-            throw "chip8emu exited during smoke test with code $($p.ExitCode)"
-          }
-          Stop-Process -Id $p.Id -Force
+          set -euo pipefail
+          WORKSPACE="$(cygpath -u "$GITHUB_WORKSPACE")"
+          cd "$WORKSPACE"
+          printf '\x00\xe0\x12\x00' > test.ch8
+
+          cd dist
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./chip8emu.exe ../test.ch8 &
+          pid=$!
+          sleep 3
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || true
+            echo "chip8emu exited during smoke test" >&2
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
